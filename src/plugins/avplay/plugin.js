@@ -8,7 +8,6 @@ import { setBackdropTransparency, TRANSPARENCY_LEVEL } from '../../components/ba
 import { PluginType } from '../../types/plugin.ts';
 import Events from '../../utils/events.ts';
 
-
 function getMediaStreamAudioTracks(mediaSource) {
     return mediaSource.MediaStreams.filter(function (s) {
         return s.Type === 'Audio';
@@ -33,14 +32,16 @@ function normalizeSubtitleText(text) {
 
 class AvplayVideoPlayer {
     // playbackManager needs this
-    name = "AVPlay Video Player";
+    name = 'AVPlay Video Player';
     type = PluginType.MediaPlayer;
     id = 'avplay-video';
     isLocalPlayer = true;
-    //lastPlayerData = {}; // FIXME: need?
 
-    _currentPlayOptions = {};
+    _subtitlesEnabled = false;
+    _subtitleHideTimeout = null;
+    _showTrackOffset = false;
     _currentTrackOffset = 0;
+    _currentPlayOptions = {};
 
     canPlayMediaType(mediaType) {
         return (mediaType || '').toLowerCase() === 'video';
@@ -106,19 +107,24 @@ class AvplayVideoPlayer {
                 },
                 {
                     Container: 'mp4,m4v',
-                    AudioCodec: 'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
-                    VideoCodec: 'h264,hevc,mpeg2video,vc1,msmpeg4v2,vp8,vp9,av1',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    VideoCodec:
+                        'h264,hevc,mpeg2video,vc1,msmpeg4v2,vp8,vp9,av1',
                     Type: 'Video'
                 },
                 {
                     Container: 'mkv',
-                    AudioCodec: 'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
-                    VideoCodec: 'h264,hevc,mpeg2video,vc1,msmpeg4v2,vp8,vp9,av1',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    VideoCodec:
+                        'h264,hevc,mpeg2video,vc1,msmpeg4v2,vp8,vp9,av1',
                     Type: 'Video'
                 },
                 {
                     Container: 'm2ts',
-                    AudioCodec: 'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
                     VideoCodec: 'h264,vc1,mpeg2video',
                     Type: 'Video'
                 },
@@ -128,7 +134,8 @@ class AvplayVideoPlayer {
                 },
                 {
                     Container: 'ts,mpegts',
-                    AudioCodec: 'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
                     VideoCodec: 'h264,hevc,vc1,mpeg2video,av1',
                     Type: 'Video'
                 },
@@ -138,18 +145,21 @@ class AvplayVideoPlayer {
                 },
                 {
                     Container: 'avi',
-                    AudioCodec: 'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
                     VideoCodec: 'h264,hevc',
                     Type: 'Video'
                 },
                 {
                     Container: 'mpg,mpeg,flv,3gp,mts,trp,vob,vro',
-                    AudioCodec: 'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
                     Type: 'Video'
                 },
                 {
                     Container: 'mov',
-                    AudioCodec: 'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
                     VideoCodec: 'h264',
                     Type: 'Video'
                 },
@@ -161,7 +171,7 @@ class AvplayVideoPlayer {
                     Container: 'webm',
                     AudioCodec: 'opus,webma',
                     Type: 'Audio'
-                },
+                }
             ],
 
             ResponseProfiles: [
@@ -187,215 +197,232 @@ class AvplayVideoPlayer {
                 }
             ],
 
-            TranscodingProfiles: [{
-                Container: "aac",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "aac",
-                Protocol: "hls",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Streaming',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 1,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "aac",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "aac",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Streaming',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "mp3",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "mp3",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Streaming',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "opus",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "opus",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Streaming',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "wav",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "wav",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Streaming',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "opus",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "opus",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Static',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "mp3",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "mp3",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Static',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "aac",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "aac",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Static',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "wav",
-                Type: 'Audio',
-                VideoCodec: "",
-                AudioCodec: "wav",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Static',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "mkv",
-                Type: 'Video',
-                VideoCodec: "h264,hevc,mpeg2video,vc1,msmpeg4v2,vp8,vp9,av1",
-                AudioCodec: "aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis",
-                Protocol: "",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: true,
-                Context: 'Static',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "ts",
-                Type: 'Video',
-                VideoCodec: "h264,hevc,av1",
-                AudioCodec: "aac,mp3,ac3,eac3,ac4,opus",
-                Protocol: "hls",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Streaming',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 1,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "webm",
-                Type: 'Video',
-                VideoCodec: "vpx",
-                AudioCodec: "vorbis",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Streaming',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: "6",
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }, {
-                Container: "mp4",
-                Type: 'Video',
-                VideoCodec: "h264,hevc,av1",
-                AudioCodec: "aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis",
-                Protocol: "http",
-                EstimateContentLength: false,
-                EnableMpegtsM2TsMode: false,
-                TranscodeSeekInfo: 'Auto',
-                CopyTimestamps: false,
-                Context: 'Static',
-                EnableSubtitlesInManifest: false,
-                MaxAudioChannels: null,
-                MinSegments: 0,
-                SegmentLength: 0,
-                BreakOnNonKeyFrames: false
-            }]
+            TranscodingProfiles: [
+                {
+                    Container: 'aac',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'aac',
+                    Protocol: 'hls',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Streaming',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 1,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'aac',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'aac',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Streaming',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'mp3',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'mp3',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Streaming',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'opus',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'opus',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Streaming',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'wav',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'wav',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Streaming',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'opus',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'opus',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Static',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'mp3',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'mp3',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Static',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'aac',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'aac',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Static',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'wav',
+                    Type: 'Audio',
+                    VideoCodec: '',
+                    AudioCodec: 'wav',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Static',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'mkv',
+                    Type: 'Video',
+                    VideoCodec:
+                        'h264,hevc,mpeg2video,vc1,msmpeg4v2,vp8,vp9,av1',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    Protocol: '',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: true,
+                    Context: 'Static',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'ts',
+                    Type: 'Video',
+                    VideoCodec: 'h264,hevc,av1',
+                    AudioCodec: 'aac,mp3,ac3,eac3,ac4,opus',
+                    Protocol: 'hls',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Streaming',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 1,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'webm',
+                    Type: 'Video',
+                    VideoCodec: 'vpx',
+                    AudioCodec: 'vorbis',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Streaming',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: '6',
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                },
+                {
+                    Container: 'mp4',
+                    Type: 'Video',
+                    VideoCodec: 'h264,hevc,av1',
+                    AudioCodec:
+                        'aac,mp3,ac3,eac3,ac4,mp2,pcm_s16le,pcm_s24le,aac_latm,opus,flac,vorbis',
+                    Protocol: 'http',
+                    EstimateContentLength: false,
+                    EnableMpegtsM2TsMode: false,
+                    TranscodeSeekInfo: 'Auto',
+                    CopyTimestamps: false,
+                    Context: 'Static',
+                    EnableSubtitlesInManifest: false,
+                    MaxAudioChannels: null,
+                    MinSegments: 0,
+                    SegmentLength: 0,
+                    BreakOnNonKeyFrames: false
+                }
+            ]
         };
 
         return Promise.resolve(profile);
@@ -404,7 +431,8 @@ class AvplayVideoPlayer {
     play(options) {
         var self = this;
 
-        return self.createMediaElement(options)
+        return self
+            .createMediaElement(options)
             .then(function (elem) {
                 self._videoElement = elem;
                 return self.setCurrentSrc(elem, options);
@@ -412,15 +440,21 @@ class AvplayVideoPlayer {
             .then(function () {
                 if (options.fullscreen) {
                     appRouter.showVideoOsd().then(function () {
-                        self._videoElement.classList.remove('avplayVideoPlayerOnTop');
+                        self._videoElement.classList.remove(
+                            'avplayVideoPlayerOnTop'
+                        );
                     });
                 } else {
                     setBackdropTransparency(TRANSPARENCY_LEVEL.Backdrop);
-                    self._videoElement.classList.remove('avplayVideoPlayerOnTop');
+                    self._videoElement.classList.remove(
+                        'avplayVideoPlayerOnTop'
+                    );
                 }
 
                 if (options.playerStartPositionTicks) {
-                    return self.currentTime(options.playerStartPositionTicks / 10000);
+                    return self.currentTime(
+                        options.playerStartPositionTicks / 10000
+                    );
                 }
 
                 return Promise.resolve();
@@ -431,32 +465,66 @@ class AvplayVideoPlayer {
                 console.debug('play 2', webapis.avplay.getState());
 
                 if (!self._videoSubtitlesElem) {
-                    let subtitlesContainer = document.querySelector('.avplaySubtitles');
+                    let subtitlesContainer =
+                        document.querySelector('.avplaySubtitles');
                     if (!subtitlesContainer) {
                         subtitlesContainer = document.createElement('div');
                         subtitlesContainer.classList.add('avplaySubtitles');
                     }
-                    const subtitlesElement = document.createElement('div');
+                    const subtitlesElement =
+                        document.createElement('div');
                     subtitlesElement.classList.add('avplaySubtitlesInner');
                     subtitlesContainer.appendChild(subtitlesElement);
                     self._videoSubtitlesElem = subtitlesElement;
-                    self._videoElement.parentNode.appendChild(subtitlesContainer);
-                    subtitleAppearanceHelper.applyStyles({
+                    self._videoElement.parentNode.appendChild(
+                        subtitlesContainer
+                    );
+                    subtitleAppearanceHelper.applyStyles(
+                        {
                             text: self._videoSubtitlesElem,
                             window: subtitlesContainer
-                        }, userSettings.getSubtitleAppearanceSettings());
+                        },
+                        userSettings.getSubtitleAppearanceSettings()
+                    );
                 }
 
-                var audioIndex = options.playMethod === 'Transcode' ? null : options.mediaSource.DefaultAudioStreamIndex;
-                if (audioIndex) {
+                var audioIndex =
+                    options.playMethod === 'Transcode'
+                        ? null
+                        : options.mediaSource.DefaultAudioStreamIndex;
+                if (audioIndex != null && audioIndex >= 0) {
                     self.setAudioStreamIndex(audioIndex);
                 }
 
-                var subtitleIndex = options.mediaSource.DefaultSubtitleStreamIndex;
-                if (subtitleIndex != null && subtitleIndex >= 0) {
-                    var initialSubtitleStream = options.mediaSource.MediaStreams[subtitleIndex];
-                    if (initialSubtitleStream && initialSubtitleStream.DeliveryMethod !== 'Encode') {
+                // Subtitle selection:
+                // 1) Prefer explicit UI selection (subtitleStreamIndex)
+                // 2) Else fall back to DefaultSubtitleStreamIndex
+                let subtitleIndex = null;
+                if (
+                    typeof options.subtitleStreamIndex === 'number'
+                ) {
+                    subtitleIndex = options.subtitleStreamIndex;
+                } else if (
+                    typeof options.mediaSource
+                        .DefaultSubtitleStreamIndex === 'number'
+                ) {
+                    subtitleIndex =
+                        options.mediaSource.DefaultSubtitleStreamIndex;
+                }
+
+                if (subtitleIndex == null || subtitleIndex < 0) {
+                    // Explicitly no subtitles
+                    self.setSubtitleStreamIndex(-1);
+                } else {
+                    const initialSubtitleStream =
+                        options.mediaSource.MediaStreams[subtitleIndex];
+                    if (
+                        initialSubtitleStream &&
+                        initialSubtitleStream.DeliveryMethod !== 'Encode'
+                    ) {
                         self.setSubtitleStreamIndex(subtitleIndex);
+                    } else {
+                        self.setSubtitleStreamIndex(-1);
                     }
                 }
 
@@ -471,10 +539,6 @@ class AvplayVideoPlayer {
 
         if (elem) {
             console.debug('stop 1', webapis.avplay.getState());
-            /*
-            webapis.avplay.pause();
-            console.debug('stop 2', webapis.avplay.getState());
-            */
 
             this.onEnded();
 
@@ -482,6 +546,16 @@ class AvplayVideoPlayer {
             console.debug('stop 3', webapis.avplay.getState());
             webapis.avplay.close();
             console.debug('stop 4', webapis.avplay.getState());
+
+            // Clean subtitle overlay on stop
+            if (this._subtitleHideTimeout) {
+                clearTimeout(this._subtitleHideTimeout);
+                this._subtitleHideTimeout = null;
+            }
+            if (this._videoSubtitlesElem) {
+                this._videoSubtitlesElem.innerHTML = '';
+                this._videoSubtitlesElem.classList.add('hide');
+            }
 
             if (destroyPlayer) {
                 this.destroy();
@@ -508,8 +582,19 @@ class AvplayVideoPlayer {
 
         this._videoElement = null;
 
+        // Clean subtitles on destroy too
+        if (this._subtitleHideTimeout) {
+            clearTimeout(this._subtitleHideTimeout);
+            this._subtitleHideTimeout = null;
+        }
+
         if (this._videoSubtitlesElem) {
-            this._videoSubtitlesElem.parentNode.removeChild(this._videoSubtitlesElem);
+            this._videoSubtitlesElem.innerHTML = '';
+            this._videoSubtitlesElem.classList.add('hide');
+
+            this._videoSubtitlesElem.parentNode.removeChild(
+                this._videoSubtitlesElem
+            );
             this._videoSubtitlesElem = null;
         }
     }
@@ -542,7 +627,11 @@ class AvplayVideoPlayer {
                 };
 
                 console.debug('seekTo', webapis.avplay.getState());
-                webapis.avplay.seekTo(val, successCallback, errorCallback);
+                webapis.avplay.seekTo(
+                    val,
+                    successCallback,
+                    errorCallback
+                );
             });
         }
 
@@ -554,7 +643,9 @@ class AvplayVideoPlayer {
     }
 
     seekable() {
-        return this._videoElement && webapis.avplay.getDuration() > 0;
+        return (
+            this._videoElement && webapis.avplay.getDuration() > 0
+        );
     }
 
     paused() {
@@ -578,7 +669,10 @@ class AvplayVideoPlayer {
             elem = document.createElement('object');
             elem.type = 'application/avplayer';
             elem.classList.add('avplayVideoPlayer');
-            elem.classList.toggle('avplayVideoPlayerOnTop', options.fullscreen);
+            elem.classList.toggle(
+                'avplayVideoPlayerOnTop',
+                options.fullscreen
+            );
             document.body.insertBefore(elem, document.body.children[0]);
         }
 
@@ -595,67 +689,116 @@ class AvplayVideoPlayer {
         return new Promise(function (resolve, reject) {
             var listener = {
                 onbufferingstart: function () {
-                    console.debug("Buffering start.");
+                    console.debug('Buffering start.');
                 },
- 
+
                 onbufferingprogress: function (percent) {
-                    console.debug("Buffering progress data : " + percent);
+                    console.debug(
+                        'Buffering progress data : ' + percent
+                    );
                 },
 
                 onbufferingcomplete: function () {
-                    console.debug("Buffering complete.");
+                    console.debug('Buffering complete.');
                 },
- 
+
                 onstreamcompleted: function () {
                     console.debug('onstreamcompleted');
                     self.onEnded();
                 },
 
-                oncurrentplaytime: function (currentTime)  {
+                oncurrentplaytime: function (currentTime) {
                     Events.trigger(self, 'timeupdate');
                 },
 
                 onerror: function (eventType) {
-                    console.debug("event type error : " + eventType);
+                    console.debug('event type error : ' + eventType);
                     reject(eventType);
                 },
 
                 onevent: function (eventType, eventData) {
-                    console.debug("event type: " + eventType + ", data: " + eventData);
+                    console.debug(
+                        'event type: ' +
+                            eventType +
+                            ', data: ' +
+                            eventData
+                    );
                 },
 
-                onsubtitlechange: function (duration, text, data3, data4) {
-                    console.debug("subtitleText: " + text);
+                onsubtitlechange: function (duration, text) {
                     const e = self._videoSubtitlesElem;
-                    if (e) {
-                        if (text) {
-                            e.innerHTML = DOMPurify.sanitize(normalizeSubtitleText(text));
-                            e.classList.remove('hide');
-                        } else {
-                            e.classList.add('hide');
+
+                    // Do not render ANY subtitles when disabled
+                    if (!e || !self._subtitlesEnabled) {
+                        return;
+                    }
+
+                    // Clear any existing timeout
+                    if (self._subtitleHideTimeout) {
+                        clearTimeout(self._subtitleHideTimeout);
+                        self._subtitleHideTimeout = null;
+                    }
+
+                    if (text) {
+                        // Show subtitle
+                        e.innerHTML = DOMPurify.sanitize(
+                            normalizeSubtitleText(text)
+                        );
+                        e.classList.remove('hide');
+
+                        // Auto-hide after AVPlay-reported duration
+                        if (duration && duration > 0) {
+                            self._subtitleHideTimeout =
+                                setTimeout(() => {
+                                    e.innerHTML = '';
+                                    e.classList.add('hide');
+                                }, duration);
                         }
+                    } else {
+                        // Hide immediately when empty
+                        e.innerHTML = '';
+                        e.classList.add('hide');
                     }
                 },
 
                 ondrmevent: function (drmEvent, drmData) {
-                    console.debug("DRM callback: " + drmEvent + ", data: " + drmData);
+                    console.debug(
+                        'DRM callback: ' +
+                            drmEvent +
+                            ', data: ' +
+                            drmData
+                    );
                 }
             };
 
             self._currentPlayOptions = options;
 
-            console.debug('setCurrentSrc 1', webapis.avplay.getState());
+            console.debug(
+                'setCurrentSrc 1',
+                webapis.avplay.getState()
+            );
             webapis.avplay.close();
-            console.debug('setCurrentSrc 2', webapis.avplay.getState());
+            console.debug(
+                'setCurrentSrc 2',
+                webapis.avplay.getState()
+            );
             webapis.avplay.open(options.url);
-            console.debug('setCurrentSrc 3', webapis.avplay.getState());
+            console.debug(
+                'setCurrentSrc 3',
+                webapis.avplay.getState()
+            );
 
             // HACK: Wait more - doesn't help
             webapis.avplay.setTimeoutForBuffering(60);
 
             webapis.avplay.setListener(listener);
 
-            webapis.avplay.setDisplayRect(elem.offsetLeft, elem.offsetTop, elem.offsetWidth, elem.offsetHeight);
+            webapis.avplay.setDisplayRect(
+                elem.offsetLeft,
+                elem.offsetTop,
+                elem.offsetWidth,
+                elem.offsetHeight
+            );
 
             webapis.avplay.prepareAsync(resolve, reject);
         });
@@ -665,13 +808,22 @@ class AvplayVideoPlayer {
         return true;
     }
 
+    canSetSubtitleStreamIndex() {
+        return true;
+    }
+
     setAudioStreamIndex(streamIndex) {
-        console.debug('setting new audio track index to: ' + streamIndex);
+        console.debug(
+            'setting new audio track index to: ' + streamIndex
+        );
 
         var audioIndex = -1;
 
         if (streamIndex !== -1) {
-            var audioTracks = getMediaStreamAudioTracks(this._currentPlayOptions.mediaSource);
+            var audioTracks =
+                getMediaStreamAudioTracks(
+                    this._currentPlayOptions.mediaSource
+                );
 
             console.debug('AudioTracks:', audioTracks);
 
@@ -689,85 +841,129 @@ class AvplayVideoPlayer {
             return;
         }
 
-        var audioTracks = webapis.avplay.getTotalTrackInfo().filter(function (t) {
-            return t.type === 'AUDIO';
-        });
+        var audioTracksInfo =
+            webapis.avplay
+                .getTotalTrackInfo()
+                .filter(function (t) {
+                    return t.type === 'AUDIO';
+                });
 
-        console.debug('AudioTracks:', audioTracks);
+        console.debug('AudioTracks:', audioTracksInfo);
 
-        if (audioIndex < audioTracks.length) {
-            var track = audioTracks[audioIndex];
+        if (audioIndex < audioTracksInfo.length) {
+            var trackInfo = audioTracksInfo[audioIndex];
 
-            webapis.avplay.setSelectTrack('AUDIO', track.index);
+            webapis.avplay.setSelectTrack(
+                'AUDIO',
+                trackInfo.index
+            );
         } else {
             console.error('[setAudioStreamIndex] Out of bound');
         }
     }
 
     setSubtitleStreamIndex(streamIndex) {
-        var self = this;
+        console.debug(
+            'setting new text track index to:',
+            streamIndex
+        );
 
-        console.debug('setting new text track index to: ' + streamIndex);
+        // Subtitles OFF
+        if (streamIndex === -1 || streamIndex == null) {
+            this._subtitlesEnabled = false;
+            webapis.avplay.setSilentSubtitle(true);
 
-        var textIndex = -1;
-        var track = null;
-
-        if (streamIndex !== -1) {
-            var textTracks = getMediaStreamTextTracks(this._currentPlayOptions.mediaSource);
-
-            console.debug('TextTracks:', textTracks);
-            console.debug(webapis.avplay.getTotalTrackInfo());
-
-            for (var i = 0; i < textTracks.length; i++) {
-                var t = textTracks[i];
-
-                if (t.Index === streamIndex) {
-                    textIndex = i;
-                    track = t;
-                    break;
-                }
+            if (this._videoSubtitlesElem) {
+                this._videoSubtitlesElem.innerHTML = '';
+                this._videoSubtitlesElem.classList.add('hide');
             }
+
+            return;
         }
 
-        if (track) {
-            if (track.DeliveryMethod === 'External') {
-                var downloadRequest = new tizen.DownloadRequest(window.ApiClient.getUrl(track.DeliveryUrl), 'wgt-private-tmp');
+        // Subtitles ON
+        this._subtitlesEnabled = true;
+        webapis.avplay.setSilentSubtitle(false);
 
-                tizen.download.start(downloadRequest, {
-                    oncompleted: function (downloadId, fullPath) {
-                        console.log('absolute path of downloaded file: ' + fullPath);
+        const textTracksMeta =
+            getMediaStreamTextTracks(
+                this._currentPlayOptions.mediaSource
+            );
+        const trackMeta = textTracksMeta.find(
+            t => t.Index === streamIndex
+        );
 
-                        webapis.avplay.setExternalSubtitlePath(fullPath);
-                        console.debug(webapis.avplay.getTotalTrackInfo());
+        if (!trackMeta) {
+            console.error(
+                'Track not found for streamIndex:',
+                streamIndex
+            );
+            return;
+        }
 
-                        webapis.avplay.setSubtitlePosition(self._currentTrackOffset);
-                    },
-                    onfailed: function (error) {
-                        console.log('Failed to download Subtitle', error);
-                    }
-                });
-            } else if (track.DeliveryMethod === 'Embed') {
-                var textTracks = webapis.avplay.getTotalTrackInfo().filter(function (t) {
-                    return t.type === 'TEXT';
-                });
+        // External subtitle (download)
+        if (trackMeta.DeliveryMethod === 'External') {
+            const request = new tizen.DownloadRequest(
+                window.ApiClient.getUrl(trackMeta.DeliveryUrl),
+                'wgt-private-tmp'
+            );
 
-                console.debug('TextTracks:', textTracks);
+            tizen.download.start(request, {
+                oncompleted: (id, fullPath) => {
+                    console.log(
+                        'Downloaded subtitle:',
+                        fullPath
+                    );
 
-                if (textIndex < textTracks.length) {
-                    webapis.avplay.setSelectTrack('TEXT', textTracks[textIndex].index);
-                } else {
-                    console.error('[setSubtitleStreamIndex] Out of bound');
-                }
+                    webapis.avplay.setExternalSubtitlePath(
+                        fullPath
+                    );
+                    webapis.avplay.setSubtitlePosition(
+                        this._currentTrackOffset
+                    );
+                },
+                onfailed: err =>
+                    console.error(
+                        'Subtitle download failed:',
+                        err
+                    )
+            });
+
+            return;
+        }
+
+        // Embedded subtitle
+        if (trackMeta.DeliveryMethod === 'Embed') {
+            const avplayTracks =
+                webapis.avplay
+                    .getTotalTrackInfo()
+                    .filter(t => t.type === 'TEXT');
+
+            const indexInList = textTracksMeta.findIndex(
+                t => t.Index === streamIndex
+            );
+            if (
+                indexInList >= 0 &&
+                indexInList < avplayTracks.length
+            ) {
+                webapis.avplay.setSelectTrack(
+                    'TEXT',
+                    avplayTracks[indexInList].index
+                );
+            } else {
+                console.error(
+                    'AVPlay subtitle index out of range'
+                );
             }
-        } else {
-            webapis.avplay.setSilentSubtitle(true);
+
+            return;
         }
     }
 
     setSubtitleOffset(offset) {
         var offsetValue = parseFloat(offset) * 1000;
         // FIXME: Cannot be called if no subtitles
-        //webapis.avplay.setSubtitlePosition(offsetValue);
+        // webapis.avplay.setSubtitlePosition(offsetValue);
     }
 
     resetSubtitleOffset() {
@@ -803,10 +999,14 @@ class AvplayVideoPlayer {
                 const extraInfo = JSON.parse(stream.extra_info);
                 categories.push({
                     type: 'video',
-                    stats: [{
-                        label: globalize.translate('LabelPlayerViews'),
-                        value: `${extraInfo.Width}x${extraInfo.Height}`
-                    }]
+                    stats: [
+                        {
+                            label: globalize.translate(
+                                'LabelPlayerViews'
+                            ),
+                            value: `${extraInfo.Width}x${extraInfo.Height}`
+                        }
+                    ]
                 });
                 break;
             }
@@ -816,6 +1016,6 @@ class AvplayVideoPlayer {
             categories
         });
     }
-};
+}
 
 export default AvplayVideoPlayer;
