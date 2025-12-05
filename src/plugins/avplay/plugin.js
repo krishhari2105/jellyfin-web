@@ -47,6 +47,24 @@ class AvplayVideoPlayer {
         return (mediaType || '').toLowerCase() === 'video';
     }
 
+        canPlayItem(item) {
+
+    const mediaSource = item?.MediaSources?.[0];
+    const streams = mediaSource?.MediaStreams || [];
+
+    // Detect PGS (works perfectly)
+    const hasPGS = streams.some(
+        s => s.Type === "Subtitle" && s.Codec?.toLowerCase().includes("pgs")
+    );
+    if (hasPGS) {
+        console.log("Fallback → PGS subtitle detected");
+        return false;
+    }
+
+    return true; // AVPlay for normal videos
+    }
+
+
     supportsPlayMethod(playMethod, item) {
         return true;
     }
